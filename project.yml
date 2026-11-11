@@ -1,0 +1,46 @@
+name: DaySpool
+options:
+  deploymentTarget:
+    macOS: "15.0"
+configFiles:
+  Debug: Config/Debug.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: YES
+  configs:
+    Release:
+      CODE_SIGN_IDENTITY: "-"
+      DEVELOPMENT_TEAM: ""
+targets:
+  DaySpool:
+    type: application
+    platform: macOS
+    sources: [DaySpool]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.willsuo.dayspool
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: "DaySpool contributors"
+    dependencies:
+      - sdk: libsqlite3.tbd
+  DaySpoolTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [DaySpoolTests]
+    dependencies:
+      - target: DaySpool
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.willsuo.dayspool.tests
+schemes:
+  DaySpool:
+    build:
+      targets:
+        DaySpool: all
+    test:
+      targets: [DaySpoolTests]

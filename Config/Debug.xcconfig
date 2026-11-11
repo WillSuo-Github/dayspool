@@ -1,0 +1,4 @@
+// Source builds can run locally without a developer account.
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+#include? "LocalDevelopment.xcconfig"
