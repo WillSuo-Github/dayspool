@@ -100,7 +100,7 @@ final class JournalStore {
         try query("SELECT * FROM events WHERE id = ?", [id], row: Self.event).first
     }
 
-    func evidence(for period: ReportPeriod, includeFiles: Bool = false) throws -> [JournalEvent] {
+    func evidence(for period: ReportPeriod, filesSince: Date? = nil) throws -> [JournalEvent] {
         // Keep a sample from each ten-minute slice, even during high-frequency editing.
         try query("""
             WITH candidates AS (
@@ -108,11 +108,11 @@ final class JournalStore {
                     PARTITION BY kind, CAST((MAX(start, ?) - ?) / 600 AS INTEGER)
                     ORDER BY start DESC
                 ) AS position
-                FROM events WHERE start < ? AND (start >= ? OR end > ?) AND (? = 1 OR kind != 'file')
+                FROM events WHERE start < ? AND (start >= ? OR end > ?) AND (kind != 'file' OR start >= ?)
             )
             SELECT id, kind, start, end, bundle, app, window, body, session
             FROM candidates WHERE position <= 4 ORDER BY position, start
-            """, [period.start, period.start, period.end, period.start, period.start, includeFiles ? 1 : 0], row: Self.event)
+            """, [period.start, period.start, period.end, period.start, period.start, filesSince], row: Self.event)
     }
 
     func enqueueClosed(now: Date, calendar: Calendar) throws {

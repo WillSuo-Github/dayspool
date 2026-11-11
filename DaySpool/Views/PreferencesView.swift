@@ -33,8 +33,10 @@ struct PreferencesView: View {
                 }
             }
             Section("File Activity") {
-                Toggle("Monitor file changes on the internal disk", isOn: $model.filesEnabled)
-                Text("Records names, paths, times, and changes where macOS allows access. It does not read file contents. Cache and temporary folders are skipped.")
+                Toggle("Record and summarize file changes", isOn: Binding(
+                    get: { model.filesEnabled }, set: model.setFileActivityEnabled
+                ))
+                Text("Records changes on the internal disk where macOS allows access. When Codex reports are enabled, selected file and folder names, times, and change types recorded after turning this on can be sent to Codex. File Activity does not send full paths or read file contents.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Excluded from app and screen recording") {
@@ -47,7 +49,6 @@ struct PreferencesView: View {
         .formStyle(.grouped)
         .onChange(of: model.textEnabled) { model.applyCaptureSettings() }
         .onChange(of: model.ocrEnabled) { model.applyCaptureSettings() }
-        .onChange(of: model.filesEnabled) { model.applyCaptureSettings() }
         .onChange(of: model.excludedApps) { model.applyCaptureSettings() }
         .onAppear(perform: model.refreshPermissions)
     }
@@ -77,10 +78,6 @@ struct PreferencesView: View {
                 }
             }
             Section("Reports") {
-                Toggle("Include file and folder names in Codex reports", isOn: $model.filesInReports)
-                    .disabled(!model.codexEnabled)
-                Text("Off by default. When enabled, selected names and change types can be sent to Codex. The file activity collector does not send full paths or file contents.")
-                    .font(.callout).foregroundStyle(.secondary)
                 Picker("Language", selection: $model.reportLanguage) {
                     ForEach(["Auto", "English", "Simplified Chinese", "Traditional Chinese"], id: \.self) {
                         Text($0).tag($0)
@@ -94,7 +91,6 @@ struct PreferencesView: View {
         }
         .formStyle(.grouped)
         .onChange(of: model.reportLanguage) { model.saveReportSettings() }
-        .onChange(of: model.filesInReports) { model.saveReportSettings() }
     }
 
     private func chooseCodex() {

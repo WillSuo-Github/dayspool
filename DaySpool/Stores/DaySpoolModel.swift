@@ -11,8 +11,7 @@ final class DaySpoolModel {
     var paused: Bool
     var textEnabled: Bool
     var ocrEnabled: Bool
-    var filesEnabled: Bool
-    var filesInReports: Bool
+    private(set) var fileActivitySince: Date?
     var excludedApps: Set<String>
     private(set) var codexEnabled: Bool
     private(set) var codexPath: String
@@ -56,8 +55,7 @@ final class DaySpoolModel {
         paused = defaults.bool(forKey: "paused")
         textEnabled = defaults.object(forKey: "textEnabled") as? Bool ?? true
         ocrEnabled = defaults.bool(forKey: "ocrEnabled")
-        filesEnabled = defaults.bool(forKey: "fileActivityEnabled")
-        filesInReports = defaults.bool(forKey: "fileActivityInCodexReports")
+        fileActivitySince = !testing && fixtureWindow == nil ? FileActivityPreference.load(from: defaults) : nil
         excludedApps = Set(defaults.stringArray(forKey: "excludedApps") ?? [])
         codexEnabled = defaults.bool(forKey: "codexReportsEnabled")
         codexPath = defaults.string(forKey: "codexPath") ?? ""
@@ -105,6 +103,7 @@ final class DaySpoolModel {
     }
 
     var isRecording: Bool { accepted && !paused && store != nil && !testing }
+    var filesEnabled: Bool { fileActivitySince != nil }
 
     func acceptCapture() {
         guard store != nil else { return }
@@ -145,7 +144,6 @@ final class DaySpoolModel {
         defaults.set(paused, forKey: "paused")
         defaults.set(textEnabled, forKey: "textEnabled")
         defaults.set(ocrEnabled, forKey: "ocrEnabled")
-        defaults.set(filesEnabled, forKey: "fileActivityEnabled")
         defaults.set(excludedApps.sorted(), forKey: "excludedApps")
         capture?.configure(.init(active: isRecording, textEnabled: textEnabled, ocrEnabled: ocrEnabled,
                                  filesEnabled: filesEnabled, excludedApps: excludedApps))
@@ -153,6 +151,15 @@ final class DaySpoolModel {
     }
 
     var codexExecutable: URL? { CodexCLI.locate(override: codexPath) }
+
+    func setFileActivityEnabled(_ enabled: Bool) {
+        guard enabled != filesEnabled else { return }
+        fileActivitySince = enabled ? Date() : nil
+        FileActivityPreference.save(fileActivitySince, to: defaults)
+        applyCaptureSettings()
+        cancelJob()
+        retryReports()
+    }
 
     func setCodexEnabled(_ enabled: Bool) {
         if enabled && !codexEnabled { codexSince = Date() }
@@ -177,7 +184,6 @@ final class DaySpoolModel {
         defaults.set(codexEnabled, forKey: "codexReportsEnabled")
         defaults.set(codexPath, forKey: "codexPath")
         defaults.set(reportLanguage, forKey: "reportLanguage")
-        defaults.set(filesInReports, forKey: "fileActivityInCodexReports")
         defaults.set(codexSince, forKey: "codexReportsSince")
     }
 
@@ -276,7 +282,7 @@ final class DaySpoolModel {
 
     private func run(_ report: StoredReport, store: JournalStore, executable: URL) {
         let cutoff = report.period.isManual ? Date.distantPast : codexSince ?? .distantPast
-        let includeFiles = filesInReports
+        let filesSince = fileActivitySince
         let lang = reportLanguage == "Auto"
             ? (Locale.preferredLanguages.first?.hasPrefix("zh") == true ? "Simplified Chinese" : "English")
             : reportLanguage
@@ -294,7 +300,7 @@ final class DaySpoolModel {
             }
             do {
                 let output = try await ReportGenerator(store: store, client: .init(executable: executable))
-                    .generate(period: report.period, language: lang, after: cutoff, includeFiles: includeFiles)
+                    .generate(period: report.period, language: lang, after: cutoff, filesSince: filesSince)
                 try Task.checkCancellation()
                 try store.save(output, for: report.period)
                 self?.statusMessage = nil

@@ -101,10 +101,12 @@ struct ReportContent: Codable, Equatable {
     let items: [Item]
     /// Set by DaySpool from the inputs, not from model-provided metadata.
     let includesFileEvidence: Bool?
+    let fileActivitySince: Date?
 
-    init(items: [Item], includesFileEvidence: Bool? = nil) {
+    init(items: [Item], includesFileEvidence: Bool? = nil, fileActivitySince: Date? = nil) {
         self.items = items
         self.includesFileEvidence = includesFileEvidence
+        self.fileActivitySince = fileActivitySince
     }
 
     func markdown(for period: ReportPeriod) -> String {

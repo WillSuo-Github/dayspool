@@ -49,3 +49,24 @@ extension JournalEvent {
         return try? JSONDecoder().decode(FileChange.self, from: Data(body.utf8))
     }
 }
+
+enum FileActivityPreference {
+    static let key = "fileActivityEnabledSince"
+
+    static func load(from defaults: UserDefaults, now: Date = Date()) -> Date? {
+        if defaults.object(forKey: key) != nil {
+            let timestamp = defaults.double(forKey: key)
+            return timestamp.isFinite && timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
+        }
+        // A local-only opt-in never becomes consent to send filenames to Codex.
+        let allowed = defaults.bool(forKey: "fileActivityEnabled") &&
+            defaults.bool(forKey: "fileActivityInCodexReports")
+        let since = allowed ? now : nil
+        save(since, to: defaults)
+        return since
+    }
+
+    static func save(_ since: Date?, to defaults: UserDefaults) {
+        defaults.set(since?.timeIntervalSince1970 ?? 0, forKey: key)
+    }
+}

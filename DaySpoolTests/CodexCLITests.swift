@@ -55,6 +55,37 @@ final class CodexCLITests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testUnifiedFileActivitySendsOnlyNewNames() async throws {
+        let fake = try fixture(script: """
+            #!/bin/sh
+            while [ "$#" -gt 0 ]; do
+              case "$1" in --output-last-message) out="$2"; shift ;; esac
+              shift
+            done
+            prompt="$(cat)"
+            case "$prompt" in *"new-budget.pdf"*) ;; *) exit 51 ;; esac
+            case "$prompt" in *"prior-file.pdf"*|*"/private-demo"*) exit 52 ;; esac
+            printf '%s' '{"items":[{"project":"Fixture","update":"Observed a file modification","status":"observed","evidenceIDs":["file-new"]}]}' > "$out"
+            """)
+        defer { try? FileManager.default.removeItem(at: fake.deletingLastPathComponent()) }
+        let store = try JournalStore(path: ":memory:")
+        let since = Date(timeIntervalSince1970: 600)
+        let prior = FileChange(action: .modified, path: "/private-demo/prior-file.pdf",
+                               firstSeen: since.addingTimeInterval(-10), lastSeen: since, notifications: 1)
+        let new = FileChange(action: .modified, path: "/private-demo/new-budget.pdf",
+                             firstSeen: since, lastSeen: since, notifications: 1).journalEvent
+        try store.insertBatch([prior.journalEvent, .init(id: "file-new", kind: new.kind, start: new.start,
+                                                        end: new.end, bundleID: new.bundleID, appName: new.appName,
+                                                        window: new.window, body: new.body)])
+        let period = ReportPeriod(kind: .hour, start: Date(timeIntervalSince1970: 0),
+                                  end: Date(timeIntervalSince1970: 3600))
+        let result = try await ReportGenerator(store: store, client: .init(executable: fake))
+            .generate(period: period, language: "English", filesSince: since)
+        XCTAssertEqual(result.items.first?.evidenceIDs, ["file-new"])
+        XCTAssertEqual(result.fileActivitySince, since)
+    }
+
     private func fixture(script: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,

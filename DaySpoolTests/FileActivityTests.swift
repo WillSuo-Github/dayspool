@@ -55,12 +55,27 @@ final class FileActivityTests: XCTestCase {
         let at = Date(timeIntervalSince1970: 300)
         let change = FileChange(action: .modified, path: "/Users/example/Custom/budget.xlsx",
                                 firstSeen: at, lastSeen: at, notifications: 1)
-        try store.insertBatch([change.journalEvent])
+        let old = FileChange(action: .appeared, path: "/Users/example/Custom/older-local-only.pdf",
+                             firstSeen: at.addingTimeInterval(-2), lastSeen: at.addingTimeInterval(-1), notifications: 1)
+        try store.insertBatch([old.journalEvent, change.journalEvent])
         XCTAssertEqual(try store.recent(search: "budget", kind: .file).first?.fileChange, change)
         let period = ReportPeriod(kind: .hour, start: Date(timeIntervalSince1970: 0),
                                   end: Date(timeIntervalSince1970: 3600))
         XCTAssertTrue(try store.evidence(for: period).isEmpty)
-        XCTAssertEqual(try store.evidence(for: period, includeFiles: true).first?.fileChange, change)
+        XCTAssertEqual(try store.evidence(for: period, filesSince: at).compactMap(\.fileChange), [change])
+    }
+
+    func testLocalOnlyLegacyOptInDoesNotEnableCombinedSetting() throws {
+        let name = "DaySpool-FileActivityTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(true, forKey: "fileActivityEnabled")
+        XCTAssertNil(FileActivityPreference.load(from: defaults))
+        let now = Date(timeIntervalSince1970: 500)
+        FileActivityPreference.save(now, to: defaults)
+        XCTAssertEqual(FileActivityPreference.load(from: defaults), now)
+        FileActivityPreference.save(nil, to: defaults)
+        XCTAssertNil(FileActivityPreference.load(from: defaults))
     }
 
     @MainActor
@@ -72,11 +87,14 @@ final class FileActivityTests: XCTestCase {
         let item = ReportContent.Item(project: "Fixture", update: "A private name", status: .observed,
                                       evidenceIDs: ["synthetic"])
         try store.enqueue(hour)
-        try store.save(.init(items: [item], includesFileEvidence: true), for: hour)
+        try store.save(.init(items: [item], includesFileEvidence: true, fileActivitySince: start), for: hour)
         // The executable must never be invoked when the only evidence is an excluded summary.
         let generator = ReportGenerator(store: store, client: .init(executable: URL(fileURLWithPath: "/usr/bin/false")))
         let report = try await generator.generate(period: day, language: "English")
         XCTAssertTrue(report.items.isEmpty)
+        let afterReenable = try await generator.generate(period: day, language: "English",
+                                                         filesSince: start.addingTimeInterval(10))
+        XCTAssertTrue(afterReenable.items.isEmpty)
     }
 
     func testRootStreamObservesSyntheticFileOutsideStandardFolders() async throws {

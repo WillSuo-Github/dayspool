@@ -19,12 +19,15 @@ struct ReportGenerator {
 
     @MainActor
     func generate(period: ReportPeriod, language: String, after cutoff: Date = .distantPast,
-                  includeFiles: Bool = false) async throws -> ReportContent {
+                  filesSince: Date? = nil) async throws -> ReportContent {
         let evidence: [ReportInput]
         if let dependency = period.kind.dependency {
             let children = try store.reports(kind: dependency, inside: period, after: cutoff)
             let byChild = children.map { child -> [ReportInput] in
-                guard let content = child.content, includeFiles || content.includesFileEvidence != true else { return [] }
+                guard let content = child.content else { return [] }
+                if content.includesFileEvidence == true {
+                    guard let filesSince, let previous = content.fileActivitySince, previous >= filesSince else { return [] }
+                }
                 return content.items.map { item in
                     ReportInput(detail: "[\(child.period.label)] \(item.status.rawValue) · \(item.project): \(item.update)",
                                 evidenceIDs: Array(item.evidenceIDs.prefix(5)),
@@ -39,7 +42,7 @@ struct ReportGenerator {
             let evidenceStart = max(period.start, cutoff)
             guard evidenceStart < period.end else { return ReportContent(items: []) }
             let range = ReportPeriod(kind: period.kind, start: evidenceStart, end: period.end)
-            evidence = try store.evidence(for: range, includeFiles: includeFiles).compactMap { event in
+            evidence = try store.evidence(for: range, filesSince: filesSince).compactMap { event in
                 let begin = max(event.start, evidenceStart)
                 let end = min(event.end, period.end)
                 if event.kind == .file {
@@ -64,7 +67,9 @@ struct ReportGenerator {
         guard !selected.isEmpty else { return ReportContent(items: []) }
         let output = try await client.summarize(kind: period.kind, input: selected, language: language)
         let validated = try Self.validate(output, allowed: Set(selected.flatMap(\.evidenceIDs)))
-        return ReportContent(items: validated.items, includesFileEvidence: selected.contains(where: \.includesFileEvidence))
+        let containsFiles = selected.contains(where: \.includesFileEvidence)
+        return ReportContent(items: validated.items, includesFileEvidence: containsFiles,
+                             fileActivitySince: containsFiles ? filesSince : nil)
     }
 
     private static let credentialLine = try! NSRegularExpression(
